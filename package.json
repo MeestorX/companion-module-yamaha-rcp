@@ -1,0 +1,24 @@
+{
+	"name": "yamaha-scp",
+	"version": "1.5.0",
+	"api_version": "1.0.0",
+	"description": "Control module for Yamaha Pro Audio equipment via SCP",
+	"main": "index.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"keywords": ["Audio","SCP","Mixer","Yamaha"],
+	"manufacturer": "Yamaha",
+	"product": ["TF (SCP)","QL/CL (SCP)","Rivage (SCP)"],
+	"shortname": "yamaha-scp",
+	"homepage": "https://github.com/bitfocus/companion-module-yamaha-scp#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/bitfocus/companion-module-yamaha-scp.git"
+	},
+	"author": "Andrew Broughton <andy@checkcheckonetwo.com>",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/bitfocus/companion-module-yamaha-scp/issues"
+	}
+}
