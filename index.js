@@ -1,15 +1,15 @@
 // Control module for Yamaha Pro Audio, using SCP communication
 // Jack Longden <Jack@atov.co.uk> 2019
 // updated by Andrew Broughton <andy@checkcheckonetwo.com>
-// Apr 13, 2020 Version 1.4.1 
+// June 16, 2021 Version 1.6.0
 
 var tcp 			= require('../../tcp');
 var instance_skel 	= require('../../instance_skel');
 var shortid			= require('shortid');
 var scpNames 		= require('./scpNames.json');
 var upgrade			= require('./upgrade');
+var paramFuncs		= require('./paramFuncs');
 
-const SCP_PARAMS 	= ['Ok', 'Command', 'Index', 'Address', 'X', 'Y', 'Min', 'Max', 'Default', 'Unit', 'Type', 'UI', 'RW', 'Scale'];
 const SCP_VALS 		= ['Status', 'Command', 'Address', 'X', 'Y', 'Val', 'TxtVal'];
 
 
@@ -20,7 +20,7 @@ class instance extends instance_skel {
 		super(system, id, config);
 
 		Object.assign(this, {
-			...upgrade,
+			...upgrade, paramFuncs,
 		});
 		
 		this.scpCommands   = [];
@@ -34,10 +34,19 @@ class instance extends instance_skel {
 		this.macro         = {};
 		this.dataStore     = {};
 
-		this.addUpgradeScripts();
 	}
 
+	static DEVELOPER_forceStartupUpgradeScript = 0;
 
+	static GetUpgradeScripts() {
+		return [
+			upgrade.upg111to112,
+			upgrade.upg112to113,
+			upgrade.upg113to160
+		]
+	}
+
+	
 	// Startup
 	init() {
 		this.updateConfig(this.config);
@@ -105,40 +114,11 @@ class instance extends instance_skel {
 	
 	// Change in Configuration
 	updateConfig(config) {
-		
-		let fname = '';
-		const FS  = require("fs");
-		
+
 		this.config = config;
-		
-		switch (this.config.model) {
-		case 'CL/QL':
-			fname = 'CL5 SCP Parameters-1.txt';
-			break;
-		case 'TF':
-			fname = 'TF5 SCP Parameters-1.txt';
-			break;
-		case 'PM':
-			fname = 'Rivage SCP Parameters-1.txt';
-		}
+		this.scpCommands = paramFuncs.getParams(config);
+		this.newConsole();
 
-		// Read the DataFile
-		if (fname !== '') {
-			let data = FS.readFileSync(`${__dirname}/${fname}`);
-			this.scpCommands = this.parseData(data, SCP_PARAMS);
-
-			this.scpCommands.sort((a, b) => {
-				let acmd = a.Address.slice(a.Address.indexOf("/") + 1);
-				let bcmd = b.Address.slice(b.Address.indexOf("/") + 1);
-				return acmd.toLowerCase().localeCompare(bcmd.toLowerCase());
-			})
-
-			for (let i = 0; i < 4; i++) {
-				scpNames.chNames[i] = {id: `-${i+1}`, label: this.config[`myChName${(i+1)}`]};
-			}
-			
-			this.newConsole();
-		}
 	}
 
 
@@ -150,46 +130,9 @@ class instance extends instance_skel {
 		this.actions(); // Re-do the actions once the console is chosen
 		this.presets();
 		this.init_tcp();
+
+//console.log(this.config);
 	}
-
-
-	// Make each command line into an object that can be used to create the commands
-	parseData(data, params) {
-		
-		let cmds    = [];
-		let line    = [];
-		const lines = data.toString().split("\x0A");
-		
-		for (let i = 0; i < lines.length; i++){
-			// I'm not going to even try to explain this next line,
-			// but it basically pulls out the space-separated values, except for spaces that are inside quotes!
-			line = lines[i].match(/(?:[^\s"]+|"[^"]*")+/g)
-			if (line !== null && (['OK','NOTIFY'].indexOf(line[0].toUpperCase()) !== -1)) {
-				let scpCommand = {};
-				
-				for (var j = 0; j < line.length; j++){
-					scpCommand[params[j]] = line[j].replace(/"/g,'');  // Get rid of any double quotes around the strings
-				}
-				if (['GET','SSCURRENT_EX'].indexOf(line[1].toUpperCase()) === -1) {
-					cmds.push(scpCommand); // Ignore the GET confirmations...
-				}
-
-				if (params === SCP_PARAMS) {
-					let cmdArr = undefined;
-					switch(scpCommand.Address.slice(-4)) {
-						case 'Name':
-							cmdArr = this.nameCommands;
-							break;
-						case 'olor':
-							cmdArr = this.colorCommands;
-					}
-					if (cmdArr !== undefined) cmdArr.push('scp_' + scpCommand.Index);
-				}
-			}		
-		}
-		return cmds
-	}
-
 
 	// Get info from a connected console
 	getConsoleInfo() {
@@ -233,26 +176,38 @@ class instance extends instance_skel {
 				receivebuffer += chunk;
 				
 				receivedLines = receivebuffer.split("\x0A");	// Split by line break
+				if (receivedLines.length == 0) return;	// No messages
 
+//console.log(`Incoming:\n${receivebuffer}`);				
+
+				if (receivebuffer.slice(-1) != "\x0A") {
+					receivebuffer = receivedLines[receivedLines.length - 1] // Broken line, leave it for next time...
+				} else {
+					receivebuffer = '';
+				}
+
+//console.log(`Remaining: ${receivebuffer}`);
 
 				for(let line of receivedLines){
 					if (line.length == 0) {
 						continue;
 					} 
 
-					this.log('debug', `Received from device: '${line}'`);
+					this.log('debug', `Received: '${line}'`);
 
 					if (line.indexOf('OK devinfo productname') !== -1) {
 					
-						this.productName = line.slice(receivebuffer.lastIndexOf(" "));
+						this.productName = line.slice(line.lastIndexOf(" "));
 						this.log('info', `Device found: ${this.productName}`);
 					
 					} else {
 					
-						receivedcmds = this.parseData(line, SCP_VALS); // Break out the parameters
-						
+						receivedcmds = paramFuncs.parseData(line, SCP_VALS); // Break out the parameters
+//console.log(receivedcmds);						
 						for (let i=0; i < receivedcmds.length; i++) {
-							foundCmd = this.scpCommands.find(cmd => cmd.Address == receivedcmds[i].Address.slice(0,cmd.Address.length)); // Find which command
+							let cmdToFind = receivedcmds[i].Address
+//console.log(cmdToFind);
+							foundCmd = this.scpCommands.find(cmd => cmd.Address == cmdToFind.slice(0,cmd.Address.length)); // Find which command
 
 							if (foundCmd !== undefined) {
 									this.addToDataStore({scp: foundCmd, cmd: receivedcmds[i]})
@@ -266,9 +221,6 @@ class instance extends instance_skel {
 						}
 					}
 				}				
-				
-				receivebuffer = '';	// Clear the buffer
-			
 			});
 		}
 	}
@@ -326,7 +278,9 @@ class instance extends instance_skel {
 		switch(scpCmd.Type) {
 			case 'integer':
 				if (scpCmd.Max == 1) { // Boolean?
-					valParams = {type: 'checkbox', label: 'On', id: 'Val', default: (scpCmd.Default == 1) ? true : false}
+					valParams = {type: 'dropdown', label: 'State', id: 'Val', default: scpCmd.Default, minChoicesForSearch: 0, choices: [
+						{label: 'On', id:1}, {label: 'Off', id:0}, {label: 'Toggle', id:'Toggle'}
+					]}
 				} else {
 					valParams = {
 						type: 'number', label: scpLabels[scpLabelIdx], id: 'Val', min: scpCmd.Min, max: scpCmd.Max, default: parseInt(scpCmd.Default), required: true, range: false
@@ -373,8 +327,9 @@ class instance extends instance_skel {
 		let scpAction = '';
 
 		for (let i = 0; i < this.scpCommands.length; i++) {
+
 			command = this.scpCommands[i]
-			scpAction = 'scp_' + command.Index;
+			scpAction = command.Address.replace(/:/g, "_");
 		
 			commands[scpAction] = this.createAction(command);
 			feedbacks[scpAction] = JSON.parse(JSON.stringify(commands[scpAction])); // Clone the Action to a matching feedback
@@ -384,6 +339,14 @@ class instance extends instance_skel {
 				feedbacks[scpAction].options.pop();
 			} else {
 				feedbacks[scpAction].type = 'boolean'; // New feedback style
+
+				if (feedbacks[scpAction].options.length > 0) {
+					let lastOptions = feedbacks[scpAction].options[feedbacks[scpAction].options.length - 1]
+					if (lastOptions.label == 'State') {
+						lastOptions.choices.pop(); // Get rid of the Toggle setting for Feedbacks
+					}
+				}
+
 				feedbacks[scpAction].style = {color: this.rgb(0,0,0), bgcolor: this.rgb(255,0,0)};
 			}
 		}
@@ -402,9 +365,9 @@ class instance extends instance_skel {
 		]};
 
 
-//this.log('info','******** COMMAND LIST *********');
-//Object.entries(commands).forEach(([key, value]) => this.log('info',`${value.label.padEnd(36, '\u00A0')} ${key}`));
-//this.log('info','***** END OF COMMAND LIST *****')
+this.log('info','******** COMMAND LIST *********');
+Object.entries(commands).forEach(([key, value]) => this.log('info',`${value.label.padEnd(36, '\u00A0')} ${key}`));
+this.log('info','***** END OF COMMAND LIST *****')
 
 
 		this.setActions(commands);
@@ -421,7 +384,8 @@ class instance extends instance_skel {
 		let optX       = (opt.X === undefined) ? 1 : (opt.X > 0) ? opt.X : this.config[`myCh${-opt.X}`];
 		let optY       = (opt.Y === undefined) ? 0 : opt.Y - 1;
 		let optVal
-		let scpCommand = this.scpCommands.find(cmd => 'scp_' + cmd.Index == scpCmd);
+		let scpCommand = this.scpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == scpCmd);
+
 		if (scpCommand == undefined) {
 			this.log('debug',`PARSECMD: Unrecognized command. '${scpCmd}'`)
 			return;
@@ -432,14 +396,20 @@ class instance extends instance_skel {
 			case 'integer':
 			case 'binary':
 				cmdName = `${prefix} ${cmdName}`
-				optX--; 				// ch #'s are 1 higher than the parameter
-				optVal = ((prefix == 'set') ? 0 + opt.Val : ''); 	// Changes true/false to 1 0
+				if (opt.Val == 'Toggle') {
+					if (this.dataStore[scpCmd] !== undefined && this.dataStore[scpCmd][optX] !== undefined) {
+						optVal = ((prefix == 'set') ? 1 - parseInt(this.dataStore[scpCmd][optX][optY + 1]) : '');
+					}					
+				} else {
+					optVal = ((prefix == 'set') ? opt.Val : ''); 	// if it's not "set" then it's a "get" which doesn't have a Value
+				}
+				optX--; // ch #'s are 1 higher than the parameter
 				break;
 			
 			case 'string':
 				cmdName = `${prefix} ${cmdName}`
-				optX--; 				// ch #'s are 1 higher than the parameter except with Custom Banks
 				optVal = ((prefix == 'set') ? `"${opt.Val}"` : ''); // quotes around the string
+				optX--; // ch #'s are 1 higher than the parameter except with Custom Banks
 				break;
 	
 			case 'scene':
@@ -455,13 +425,13 @@ class instance extends instance_skel {
 				}
 	
 				if (this.config.model == 'CL/QL') {
-					cmdName = `${scnPrefix} ${cmdName}`;  		// Recall Scene for CL/QL
+					cmdName = `${scnPrefix} ${cmdName}`;  		 // Recall Scene for CL/QL
 				} else {
-					cmdName = `${scnPrefix} ${cmdName}${opt.Y}`; 	// Recall Scene for TF
+					cmdName = `${scnPrefix} ${cmdName}${opt.Y}`; // Recall Scene for TF
 				}
 		}		
 		
-		return `${cmdName} ${optX} ${optY} ${optVal}`.trim(); 	// Command string to send to console
+		return `${cmdName} ${optX} ${optY} ${optVal}`.trim(); 	 // Command string to send to console
 	}
 
 	
@@ -485,7 +455,6 @@ class instance extends instance_skel {
 			feedbacks: [
 				{type: 'macro', options: {'mode': 'r', fg: this.rgb(0,0,0), bg: this.rgb(255,0,0)}},
 				{type: 'macro', options: {'mode': 'rl', fg: this.rgb(0,0,0), bg: this.rgb(255,255,0)}}//,
-//				{type: 'macro', options: {'mode': 's', fg: this.rgb(255,255,255), bg: this.rgb(0,0,0)}}
 			]
 		}];
 		
@@ -508,24 +477,19 @@ class instance extends instance_skel {
 				case 'binary':
 					cX++;
 					cY++;
-					if (c.scp.Max == 1) {
-						cV = ((c.cmd.Val == 0) ? false : true)
-					} else {
-						cV = parseInt(c.cmd.Val);
-					}
+					cV = parseInt(c.cmd.Val);
 					break;
 				case 'string':
 					cX++;
 					cY++;
 					cV = c.cmd.Val;
-					break;
 			}
 			
 			// Check for new value on existing action
 			let scpActions = this.macro.actions;
 			if (scpActions !== undefined) {
 				foundActionIdx = scpActions.findIndex(cmd => (
-					cmd.action == 'scp_' + c.scp.Index && 
+					cmd.action == c.scp.Address.replace(/:/g, "_") && 
 					cmd.options.X == cX &&
 					cmd.options.Y == cY
 				));
@@ -536,7 +500,7 @@ class instance extends instance_skel {
 				foundActionIdx = scpActions.length - 1;
 			}
 
-			scpActions[foundActionIdx] = {action: 'scp_' + c.scp.Index, options: {X: cX, Y: cY, Val: cV}};
+			scpActions[foundActionIdx] = {action: c.scp.Address.replace(/:/g, "_"), options: {X: cX, Y: cY, Val: cV}};
 
 		}
 	}
@@ -555,14 +519,6 @@ class instance extends instance_skel {
 			preset.actions[i].instance  = this.id;
 			preset.actions[i].label     = this.id + ':' + preset.actions[i].action;
 
-
-			if (preset.bank.latch && (preset.actions[i].options.Val == true || preset.actions[i].options.Val == false)) {
-				let lastRelAct = JSON.parse(JSON.stringify(preset.actions[i]))
-				preset.release_actions.push(lastRelAct);
-				lastRelAct.id          = shortid.generate();
-				lastRelAct.options.Val = !lastRelAct.options.Val;
-			}
-
 			preset.feedbacks.push(
 				{
 					id:          shortid.generate(),
@@ -572,6 +528,13 @@ class instance extends instance_skel {
 					style:		 {color: this.rgb(0,0,0), bgcolor: this.rgb(255,0,0)}
 				}
 			)
+
+			let scpCommand = this.scpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == preset.actions[i].action);
+
+			if (scpCommand != undefined && scpCommand.Type == 'integer' && scpCommand.Max == 1) {
+				preset.actions[i].options.Val = 'Toggle';				
+			}
+
 		}
 
 		bank_actions[button.page][button.bank].pop();	// For some reason this is necessary...
@@ -589,7 +552,7 @@ class instance extends instance_skel {
 		if (!action.action.startsWith('macro')) { // Regular action
 			let cmd = this.parseCmd('set', action.action, action.options);
 			if (cmd !== undefined) {
-				this.log('debug', `sending '${cmd}' to ${this.config.host}`);
+				this.log('debug', `Sending : '${cmd}' to ${this.config.host}`);
 
 				if (this.socket !== undefined && this.socket.connected) {
 					this.socket.send(`${cmd}\n`); 	// send it, but add a CR to the end
@@ -621,19 +584,18 @@ class instance extends instance_skel {
 					} else {
 //console.log('Stopped.');
 						this.macroRec = false;
-						this.macroMode = 'stopped';
 						if (this.macro.actions.length > 0) {
 							this.dropMacro(this.macro, button);
 						} else {
 							this.macroCount--;
 						}
+						this.macroMode = 'stopped';
 					}
 					break;
 
 				case 'macroRecLatch':
 
 					if (this.macroMode == '') {
-						this.macro.bank.latch = true;
 						this.macroMode = 'latch';
 					}
 					break;
@@ -657,25 +619,22 @@ class instance extends instance_skel {
 	feedback(feedback, bank) {
 
 		let options     = feedback.options;
-		let scpCommand  = this.scpCommands.find(cmd => 'scp_' + cmd.Index == feedback.type);
+		let scpCommand  = this.scpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == feedback.type);
 		let retOptions  = {};
 
 		if (scpCommand !== undefined) {
-			let optVal = (options.Val == undefined ? options.X : (scpCommand.Type == 'integer') ? 0 + options.Val : `${options.Val}`); 	// 0 + value turns true/false into 1 0
+			let optVal = (options.Val == undefined) ? options.X : options.Val;
 			let optX = (options.X > 0) ? options.X : this.config[`myCh${-options.X}`];
 			let optY = (options.Y == undefined) ? 1 : options.Y;
 						
-// console.log(`\nFeedback: '${feedback.id}' from bank '${bank.text}' is ${feedback.type} (${scpCommand.Address})`);
-// console.log(`X: ${optX}, Y: ${optY}, Val: ${optVal}`);
+//console.log(`\nFeedback: '${feedback.id}' from bank '${bank.text}' is ${feedback.type} (${scpCommand.Address})`);
+//console.log(`X: ${optX}, Y: ${optY}, Val: ${optVal}`);
 
 			if (this.dataStore[feedback.type] !== undefined && this.dataStore[feedback.type][optX] !== undefined) {
 				
-				retOptions = {text: bank.text, color: bank.color, bgcolor: bank.bgcolor};
 				if (this.dataStore[feedback.type][optX][optY] == optVal) {
-					
-					retOptions = {text: (options.text == undefined) ? bank.text : options.text, color: options.fg, bgcolor: options.bg}
-// console.log(`  *** Match *** ${JSON.stringify(retOptions)}\n`);
-					return retOptions;	
+//console.log('  *** Match ***');				
+					return true;	
 
 				} else {
 
@@ -683,16 +642,18 @@ class instance extends instance_skel {
 						let c = scpNames.chColorRGB[this.dataStore[feedback.type][optX][optY]]
 						retOptions.color   = c.color;
 						retOptions.bgcolor = c.bgcolor;
+//console.log(`  *** Match *** (Color) ${JSON.stringify(retOptions)}\n`);
 						return retOptions;
 					}
 					if (this.nameCommands.includes(feedback.type)) {
 						retOptions.text = this.dataStore[feedback.type][optX][optY];
+//console.log(`  *** Match *** (Text) ${JSON.stringify(retOptions)}\n`);
 						return retOptions;
 					}
 				}
 			}
 
-			return
+			return false;
 
 		}
 //console.log(`macroMode: ${this.macroMode}, macroRec: ${this.macroRec}`);		
@@ -715,7 +676,7 @@ class instance extends instance_skel {
 		for (let fb in allFeedbacks) {
 			let cmd = this.parseCmd('get', allFeedbacks[fb].type, allFeedbacks[fb].options);
 			if (cmd !== undefined && this.id == allFeedbacks[fb].instance_id) {
-				this.log('debug', `sending '${cmd}' to ${this.config.host}`);
+				this.log('debug', `Sending : '${cmd}' to ${this.config.host}`);
 				this.socket.send(`${cmd}\n`)
 			}				
 		}
@@ -724,6 +685,7 @@ class instance extends instance_skel {
 
 	addToDataStore(cmd) {
 		let idx = cmd.scp.Index;
+		let dsAddr = cmd.scp.Address.replace(/:/g, "_");
 		let iY;
 		
 		if (cmd.cmd.Val == undefined) {
@@ -741,14 +703,15 @@ class instance extends instance_skel {
 			iY = parseInt(cmd.cmd.Y) + 1;
 		}
 
-		if (this.dataStore['scp_' + idx] == undefined) {
-			this.dataStore['scp_' + idx] = {};
+		if (this.dataStore[dsAddr] == undefined) {
+			this.dataStore[dsAddr] = {};
 		}
-		if (this.dataStore['scp_' + idx][iX] == undefined) {
-			this.dataStore['scp_' + idx][iX] = {};
+		if (this.dataStore[dsAddr][iX] == undefined) {
+			this.dataStore[dsAddr][iX] = {};
 		}
-		this.dataStore['scp_' + idx][iX][iY] = cmd.cmd.Val;
-	
+		this.dataStore[dsAddr][iX][iY] = cmd.cmd.Val;
+
+//console.log(this.dataStore)
 	}
 
 
