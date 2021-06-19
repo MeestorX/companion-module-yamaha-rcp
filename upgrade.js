@@ -150,10 +150,10 @@ module.exports = {
                 newAction = scpCommands.find(i => i.Index == name.slice(4))
  
                 if (newAction !== undefined) {
-                    name = newAction.Address.replace(/:/g, "_");
-                    console.log(`Action ${action.action} => ${name}`);
-                    (isAction) ? action.action = name : action.type = name;
-                    action.label = this.id + ':' + name;
+                    newName = newAction.Address.replace(/:/g, "_");
+                    console.log(`Action ${name} => ${newName}`);
+                    (isAction) ? action.action = newName : action.type = newName;
+                    action.label = this.id + ':' + newName;
                     changed = true;
                 } else {
                     console.log(`Action ${name} not found in list!`);

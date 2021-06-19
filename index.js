@@ -182,13 +182,14 @@ class instance extends instance_skel {
 
 				if (receivebuffer.slice(-1) != "\x0A") {
 					receivebuffer = receivedLines[receivedLines.length - 1] // Broken line, leave it for next time...
+					receivedLines.splice(receivedLines.length - 1); // Remove it.
 				} else {
 					receivebuffer = '';
 				}
 
 //console.log(`Remaining: ${receivebuffer}`);
 
-				for(let line of receivedLines){
+				for (let line of receivedLines){
 					if (line.length == 0) {
 						continue;
 					} 
@@ -205,9 +206,9 @@ class instance extends instance_skel {
 						receivedcmds = paramFuncs.parseData(line, SCP_VALS); // Break out the parameters
 //console.log(receivedcmds);						
 						for (let i=0; i < receivedcmds.length; i++) {
-							let cmdToFind = receivedcmds[i].Address
+							let cmdToFind = receivedcmds[i].Address;
 //console.log(cmdToFind);
-							foundCmd = this.scpCommands.find(cmd => cmd.Address == cmdToFind.slice(0,cmd.Address.length)); // Find which command
+							foundCmd = this.scpCommands.find(cmd => cmd.Address == cmdToFind.slice(0, cmd.Address.length)); // Find which command
 
 							if (foundCmd !== undefined) {
 									this.addToDataStore({scp: foundCmd, cmd: receivedcmds[i]})
@@ -523,7 +524,7 @@ this.log('info','***** END OF COMMAND LIST *****')
 				{
 					id:          shortid.generate(),
 					instance_id: this.id,
-					type:        preset.actions[i].action,
+					type:        'boolean', // preset.actions[i].action,
 					options:     {...preset.actions[i].options},
 					style:		 {color: this.rgb(0,0,0), bgcolor: this.rgb(255,0,0)}
 				}
