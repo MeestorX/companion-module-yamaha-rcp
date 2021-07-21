@@ -352,9 +352,9 @@ class instance extends instance_skel {
 			}
 		}
 
-		commands['macroRecStart'] = {label: 'Record rcp Macro'};
-		commands['macroRecLatch'] = {label: 'Record rcp Macro (latched)'}
-		commands['macroUnLatch'] = {label: 'Unlatch rcp Macro'};
+		commands['macroRecStart'] = {label: 'Record RCP Macro'};
+		commands['macroRecLatch'] = {label: 'Record RCP Macro (latched)'}
+		commands['macroUnLatch'] = {label: 'Unlatch RCP Macro'};
 		feedbacks['macro'] = {label: 'Macro Feedback', type: 'advanced', options: [
 			{type: 'dropdown', label: 'Mode', id: 'mode', choices: [
 				{id: 'r', label: 'Record'},
@@ -440,7 +440,7 @@ this.log('info','***** END OF COMMAND LIST *****')
 	presets() {
 		this.rcpPresets = [{
 			category: 'Macros',
-			label: 'Create rcp Macro',
+			label: 'Create RCP Macro',
 			bank: {
 				style: 			'png',
 				text: 			'Record rcp Macro',
@@ -524,7 +524,7 @@ this.log('info','***** END OF COMMAND LIST *****')
 				{
 					id:          shortid.generate(),
 					instance_id: this.id,
-					type:        'boolean', // preset.actions[i].action,
+					type:        preset.actions[i].action,
 					options:     {...preset.actions[i].options},
 					style:		 {color: this.rgb(0,0,0), bgcolor: this.rgb(255,0,0)}
 				}
