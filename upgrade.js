@@ -105,7 +105,7 @@ module.exports = {
         let checkUpgrade = ((action, changed) => {
             let newAction = '';
 
-            if (action.action.slice(0, 4) != 'scp_' && action.action.slice(0, 6) != "MIXER_") {
+            if (action.action != undefined && action.action.slice(0, 4) != 'scp_' && action.action.slice(0, 6) != "MIXER_") {
                 newAction = action.action;
             } 
 
@@ -135,11 +135,11 @@ module.exports = {
         var paramFuncs		= require('./paramFuncs');
  
         console.log('Running 1.1.3 -> 1.6.0 Upgrade.')
+        var changed = false;
 
         if (config != null) {
             var rcpCommands = paramFuncs.getParams(config)
         }
-        var changed = false;
 
         let checkUpgrade = ((action, isAction, changed) => {
             let newAction = undefined;
