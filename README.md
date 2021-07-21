@@ -24,6 +24,7 @@ Please visit http://www.checkcheckonetwo.com for help, discussions, suggestions,
 ---
 
 **REVISION HISTORY**
+
 v1.6.0  Change action names to be consistent across consoles
  
 v1.5.1  Added Toggle function and updated feedback to new format
