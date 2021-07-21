@@ -137,7 +137,7 @@ module.exports = {
         console.log('Running 1.1.3 -> 1.6.0 Upgrade.')
 
         if (config != null) {
-            var scpCommands = paramFuncs.getParams(config)
+            var rcpCommands = paramFuncs.getParams(config)
         }
         var changed = false;
 
@@ -147,7 +147,7 @@ module.exports = {
             let name = (isAction) ? action.action : action.type;
 
             if (name !== undefined && name.slice(0, 4) == 'scp_') {
-                newAction = scpCommands.find(i => i.Index == name.slice(4))
+                newAction = rcpCommands.find(i => i.Index == name.slice(4))
  
                 if (newAction !== undefined) {
                     newName = newAction.Address.replace(/:/g, "_");

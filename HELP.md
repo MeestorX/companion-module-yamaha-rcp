@@ -1,4 +1,4 @@
-## Yamaha Simple Control Protocol - v1.5.1
+## Yamaha Remote Control Protocol - v1.6.0
 
 Please visit http://www.checkcheckonetwo.com for help, discussions, suggestions, etc.
 

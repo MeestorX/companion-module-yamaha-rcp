@@ -1,16 +1,16 @@
-// Control module for Yamaha Pro Audio, using SCP communication
+// Control module for Yamaha Pro Audio digital mixers
 // Jack Longden <Jack@atov.co.uk> 2019
 // updated by Andrew Broughton <andy@checkcheckonetwo.com>
-// June 16, 2021 Version 1.6.0
+// July 21, 2021 Version 1.6.0
 
 var tcp 			= require('../../tcp');
 var instance_skel 	= require('../../instance_skel');
 var shortid			= require('shortid');
-var scpNames 		= require('./scpNames.json');
+var rcpNames 		= require('./rcpNames.json');
 var upgrade			= require('./upgrade');
 var paramFuncs		= require('./paramFuncs');
 
-const SCP_VALS 		= ['Status', 'Command', 'Address', 'X', 'Y', 'Val', 'TxtVal'];
+const RCP_VALS 		= ['Status', 'Command', 'Address', 'X', 'Y', 'Val', 'TxtVal'];
 
 
 // Instance Setup
@@ -23,10 +23,10 @@ class instance extends instance_skel {
 			...upgrade, paramFuncs,
 		});
 		
-		this.scpCommands   = [];
+		this.rcpCommands   = [];
 		this.nameCommands  = []; 	// Commands which have a name field
 		this.colorCommands = [];	// Commands which have a color field
-		this.scpPresets    = [];
+		this.rcpPresets    = [];
 		this.productName   = '';
 		this.macroRec      = false;
 		this.macroCount    = 0;
@@ -116,7 +116,7 @@ class instance extends instance_skel {
 	updateConfig(config) {
 
 		this.config = config;
-		this.scpCommands = paramFuncs.getParams(config);
+		this.rcpCommands = paramFuncs.getParams(config);
 		this.newConsole();
 
 	}
@@ -169,7 +169,7 @@ class instance extends instance_skel {
 				this.status(this.STATUS_OK);
 				this.log('info', `Connected!`);
 				this.getConsoleInfo();
-				this.pollScp();
+				this.pollrcp();
 			});
 
 			this.socket.on('data', (chunk) => {
@@ -203,16 +203,16 @@ class instance extends instance_skel {
 					
 					} else {
 					
-						receivedcmds = paramFuncs.parseData(line, SCP_VALS); // Break out the parameters
+						receivedcmds = paramFuncs.parseData(line, RCP_VALS); // Break out the parameters
 //console.log(receivedcmds);						
 						for (let i=0; i < receivedcmds.length; i++) {
 							let cmdToFind = receivedcmds[i].Address;
 //console.log(cmdToFind);
-							foundCmd = this.scpCommands.find(cmd => cmd.Address == cmdToFind.slice(0, cmd.Address.length)); // Find which command
+							foundCmd = this.rcpCommands.find(cmd => cmd.Address == cmdToFind.slice(0, cmd.Address.length)); // Find which command
 
 							if (foundCmd !== undefined) {
-									this.addToDataStore({scp: foundCmd, cmd: receivedcmds[i]})
-									this.addMacro({scp: foundCmd, cmd: receivedcmds[i]});
+									this.addToDataStore({rcp: foundCmd, cmd: receivedcmds[i]})
+									this.addMacro({rcp: foundCmd, cmd: receivedcmds[i]});
 									this.checkFeedbacks();							
 							} else {
 							
@@ -229,84 +229,84 @@ class instance extends instance_skel {
 
 
 	// Create single Action/Feedback
-	createAction(scpCmd) {
+	createAction(rcpCmd) {
 		
 		let newAction = {};
 		let valParams = {};
-		let scpLabel  = '';
+		let rcpLabel  = '';
 
-		if (this.config.model == 'TF' && scpCmd.Type == 'scene') {
-			scpLabel = 'Scene/Bank'
+		if (this.config.model == 'TF' && rcpCmd.Type == 'scene') {
+			rcpLabel = 'Scene/Bank'
 		} else {
-			scpLabel = scpCmd.Address.slice(scpCmd.Address.indexOf("/") + 1); // String after "MIXER:Current/"
+			rcpLabel = rcpCmd.Address.slice(rcpCmd.Address.indexOf("/") + 1); // String after "MIXER:Current/"
 		}
 		
-		// Add the commands from the data file. Action id's (action.action) are the SCP command number
-		let scpLabels = scpLabel.split("/");
-		let scpLabelIdx = (scpLabel.startsWith("Cue")) ? 1 : 0;
+		// Add the commands from the data file. Action id's (action.action) are the rcp command number
+		let rcpLabels = rcpLabel.split("/");
+		let rcpLabelIdx = (rcpLabel.startsWith("Cue")) ? 1 : 0;
 		
-		newAction = {label: scpLabel, options: []};
-		if (scpCmd.X > 1) {
-			if (scpLabel.startsWith("InCh") || scpLabel.startsWith("Cue/InCh")) {
+		newAction = {label: rcpLabel, options: []};
+		if (rcpCmd.X > 1) {
+			if (rcpLabel.startsWith("InCh") || rcpLabel.startsWith("Cue/InCh")) {
 				newAction.options = [
-					{type: 'dropdown', label: scpLabels[scpLabelIdx], id: 'X', default: 1, minChoicesForSearch: 0, choices: scpNames.chNames.slice(0, parseInt(scpCmd.X) + 4)}
+					{type: 'dropdown', label: rcpLabels[rcpLabelIdx], id: 'X', default: 1, minChoicesForSearch: 0, choices: rcpNames.chNames.slice(0, parseInt(rcpCmd.X) + 4)}
 				]
 			} else {
 				newAction.options = [
-					{type: 'number', label: scpLabels[scpLabelIdx], id: 'X', min: 1, max: scpCmd.X, default: 1, required: true, range: false}
+					{type: 'number', label: rcpLabels[rcpLabelIdx], id: 'X', min: 1, max: rcpCmd.X, default: 1, required: true, range: false}
 				]
 			}
-			scpLabelIdx++;
+			rcpLabelIdx++;
 		}
 
-		if (scpCmd.Y > 1) {
-			if (this.config.model == "TF" && scpCmd.Type == 'scene') {
-				valParams = {type: 'dropdown', label: scpLabels[scpLabelIdx], id: 'Y', default: 'a', choices:[
+		if (rcpCmd.Y > 1) {
+			if (this.config.model == "TF" && rcpCmd.Type == 'scene') {
+				valParams = {type: 'dropdown', label: rcpLabels[rcpLabelIdx], id: 'Y', default: 'a', choices:[
 					{id: 'a', label: 'A'},
 					{id: 'b', label: 'B'}
 				]}
 			} else {
-				valParams = {type: 'number', label: scpLabels[scpLabelIdx], id: 'Y', min: 1, max: scpCmd.Y, default: 1, required: true, range: false}
+				valParams = {type: 'number', label: rcpLabels[rcpLabelIdx], id: 'Y', min: 1, max: rcpCmd.Y, default: 1, required: true, range: false}
 			}
 
 			newAction.options.push(valParams);
 		}
 		
-		if (scpLabelIdx < scpLabels.length - 1) {
-			scpLabelIdx++;
+		if (rcpLabelIdx < rcpLabels.length - 1) {
+			rcpLabelIdx++;
 		}
 
-		switch(scpCmd.Type) {
+		switch(rcpCmd.Type) {
 			case 'integer':
-				if (scpCmd.Max == 1) { // Boolean?
-					valParams = {type: 'dropdown', label: 'State', id: 'Val', default: scpCmd.Default, minChoicesForSearch: 0, choices: [
+				if (rcpCmd.Max == 1) { // Boolean?
+					valParams = {type: 'dropdown', label: 'State', id: 'Val', default: rcpCmd.Default, minChoicesForSearch: 0, choices: [
 						{label: 'On', id:1}, {label: 'Off', id:0}, {label: 'Toggle', id:'Toggle'}
 					]}
 				} else {
 					valParams = {
-						type: 'number', label: scpLabels[scpLabelIdx], id: 'Val', min: scpCmd.Min, max: scpCmd.Max, default: parseInt(scpCmd.Default), required: true, range: false
+						type: 'number', label: rcpLabels[rcpLabelIdx], id: 'Val', min: rcpCmd.Min, max: rcpCmd.Max, default: parseInt(rcpCmd.Default), required: true, range: false
 					}
 				}
 				break;
 			case 'string':
 			case 'binary':
-				if (scpLabel.startsWith("CustomFaderBank")) {
-					valParams = {type: 'dropdown', label: scpLabels[scpLabelIdx], id: 'Val', default: scpCmd.Default, minChoicesForSearch: 0, choices: scpNames.customChNames}
-				} else if (scpLabel.endsWith("Color")) {
-					valParams = {type: 'dropdown', label: scpLabels[scpLabelIdx], id: 'Val', default: scpCmd.Default, minChoicesForSearch: 0, 
-					choices: this.config.model == "TF" ? scpNames.chColorsTF : scpNames.chColors}
-				} else if (scpLabel.endsWith("Icon")) {
-					valParams = {type: 'dropdown', label: scpLabels[scpLabelIdx], id: 'Val', default: scpCmd.Default, minChoicesForSearch: 0, 
-					choices: scpNames.chIcons}
-				} else if (scpLabel == "DanteOutPort/Patch") {
-					valParams = {type: 'dropdown', label: scpLabels[scpLabelIdx], id: 'Val', default: scpCmd.Default, minChoicesForSearch: 0, 
-					choices: scpNames.danteOutPatch}
-				} else if (scpLabel == "OmniOutPort/Patch") {
-					valParams = {type: 'dropdown', label: scpLabels[scpLabelIdx], id: 'Val', default: scpCmd.Default, minChoicesForSearch: 0, 
-					choices: scpNames.omniOutPatch}
+				if (rcpLabel.startsWith("CustomFaderBank")) {
+					valParams = {type: 'dropdown', label: rcpLabels[rcpLabelIdx], id: 'Val', default: rcpCmd.Default, minChoicesForSearch: 0, choices: rcpNames.customChNames}
+				} else if (rcpLabel.endsWith("Color")) {
+					valParams = {type: 'dropdown', label: rcpLabels[rcpLabelIdx], id: 'Val', default: rcpCmd.Default, minChoicesForSearch: 0, 
+					choices: this.config.model == "TF" ? rcpNames.chColorsTF : rcpNames.chColors}
+				} else if (rcpLabel.endsWith("Icon")) {
+					valParams = {type: 'dropdown', label: rcpLabels[rcpLabelIdx], id: 'Val', default: rcpCmd.Default, minChoicesForSearch: 0, 
+					choices: rcpNames.chIcons}
+				} else if (rcpLabel == "DanteOutPort/Patch") {
+					valParams = {type: 'dropdown', label: rcpLabels[rcpLabelIdx], id: 'Val', default: rcpCmd.Default, minChoicesForSearch: 0, 
+					choices: rcpNames.danteOutPatch}
+				} else if (rcpLabel == "OmniOutPort/Patch") {
+					valParams = {type: 'dropdown', label: rcpLabels[rcpLabelIdx], id: 'Val', default: rcpCmd.Default, minChoicesForSearch: 0, 
+					choices: rcpNames.omniOutPatch}
 
 				} else {
-					valParams = {type: 'textinput', label: scpLabels[scpLabelIdx], id: 'Val', default: scpCmd.Default, regex: ''}
+					valParams = {type: 'textinput', label: rcpLabels[rcpLabelIdx], id: 'Val', default: rcpCmd.Default, regex: ''}
 				}
 				break;
 			default:
@@ -325,36 +325,36 @@ class instance extends instance_skel {
 		let commands  = {};
 		let feedbacks = {};
 		let command   = {};
-		let scpAction = '';
+		let rcpAction = '';
 
-		for (let i = 0; i < this.scpCommands.length; i++) {
+		for (let i = 0; i < this.rcpCommands.length; i++) {
 
-			command = this.scpCommands[i]
-			scpAction = command.Address.replace(/:/g, "_");
+			command = this.rcpCommands[i]
+			rcpAction = command.Address.replace(/:/g, "_");
 		
-			commands[scpAction] = this.createAction(command);
-			feedbacks[scpAction] = JSON.parse(JSON.stringify(commands[scpAction])); // Clone the Action to a matching feedback
+			commands[rcpAction] = this.createAction(command);
+			feedbacks[rcpAction] = JSON.parse(JSON.stringify(commands[rcpAction])); // Clone the Action to a matching feedback
 
-			if (this.nameCommands.includes(scpAction) || this.colorCommands.includes(scpAction)) {
-				feedbacks[scpAction].type = 'advanced'; // New feedback style
-				feedbacks[scpAction].options.pop();
+			if (this.nameCommands.includes(rcpAction) || this.colorCommands.includes(rcpAction)) {
+				feedbacks[rcpAction].type = 'advanced'; // New feedback style
+				feedbacks[rcpAction].options.pop();
 			} else {
-				feedbacks[scpAction].type = 'boolean'; // New feedback style
+				feedbacks[rcpAction].type = 'boolean'; // New feedback style
 
-				if (feedbacks[scpAction].options.length > 0) {
-					let lastOptions = feedbacks[scpAction].options[feedbacks[scpAction].options.length - 1]
+				if (feedbacks[rcpAction].options.length > 0) {
+					let lastOptions = feedbacks[rcpAction].options[feedbacks[rcpAction].options.length - 1]
 					if (lastOptions.label == 'State') {
 						lastOptions.choices.pop(); // Get rid of the Toggle setting for Feedbacks
 					}
 				}
 
-				feedbacks[scpAction].style = {color: this.rgb(0,0,0), bgcolor: this.rgb(255,0,0)};
+				feedbacks[rcpAction].style = {color: this.rgb(0,0,0), bgcolor: this.rgb(255,0,0)};
 			}
 		}
 
-		commands['macroRecStart'] = {label: 'Record SCP Macro'};
-		commands['macroRecLatch'] = {label: 'Record SCP Macro (latched)'}
-		commands['macroUnLatch'] = {label: 'Unlatch SCP Macro'};
+		commands['macroRecStart'] = {label: 'Record rcp Macro'};
+		commands['macroRecLatch'] = {label: 'Record rcp Macro (latched)'}
+		commands['macroUnLatch'] = {label: 'Unlatch rcp Macro'};
 		feedbacks['macro'] = {label: 'Macro Feedback', type: 'advanced', options: [
 			{type: 'dropdown', label: 'Mode', id: 'mode', choices: [
 				{id: 'r', label: 'Record'},
@@ -377,29 +377,29 @@ this.log('info','***** END OF COMMAND LIST *****')
 
 	
 	// Create the proper command string for an action or poll
-	parseCmd(prefix, scpCmd, opt) {
+	parseCmd(prefix, rcpCmd, opt) {
 		
-		if (scpCmd == undefined || opt == undefined) return;
+		if (rcpCmd == undefined || opt == undefined) return;
 
 		let scnPrefix  = '';
 		let optX       = (opt.X === undefined) ? 1 : (opt.X > 0) ? opt.X : this.config[`myCh${-opt.X}`];
 		let optY       = (opt.Y === undefined) ? 0 : opt.Y - 1;
 		let optVal
-		let scpCommand = this.scpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == scpCmd);
+		let rcpCommand = this.rcpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == rcpCmd);
 
-		if (scpCommand == undefined) {
-			this.log('debug',`PARSECMD: Unrecognized command. '${scpCmd}'`)
+		if (rcpCommand == undefined) {
+			this.log('debug',`PARSECMD: Unrecognized command. '${rcpCmd}'`)
 			return;
 		} 
-		let cmdName = scpCommand.Address;			
+		let cmdName = rcpCommand.Address;			
 		
-		switch(scpCommand.Type) {
+		switch(rcpCommand.Type) {
 			case 'integer':
 			case 'binary':
 				cmdName = `${prefix} ${cmdName}`
 				if (opt.Val == 'Toggle') {
-					if (this.dataStore[scpCmd] !== undefined && this.dataStore[scpCmd][optX] !== undefined) {
-						optVal = ((prefix == 'set') ? 1 - parseInt(this.dataStore[scpCmd][optX][optY + 1]) : '');
+					if (this.dataStore[rcpCmd] !== undefined && this.dataStore[rcpCmd][optX] !== undefined) {
+						optVal = ((prefix == 'set') ? 1 - parseInt(this.dataStore[rcpCmd][optX][optY + 1]) : '');
 					}					
 				} else {
 					optVal = ((prefix == 'set') ? opt.Val : ''); 	// if it's not "set" then it's a "get" which doesn't have a Value
@@ -419,7 +419,7 @@ this.log('info','***** END OF COMMAND LIST *****')
 	
 				if (prefix == 'set') {
 					scnPrefix = 'ssrecall_ex';
-					this.pollScp();		// so buttons with feedback reflect any changes
+					this.pollrcp();		// so buttons with feedback reflect any changes
 				} else {
 					scnPrefix = 'sscurrent_ex';
 					optX = '';
@@ -438,12 +438,12 @@ this.log('info','***** END OF COMMAND LIST *****')
 	
 	// Create the preset definitions
 	presets() {
-		this.scpPresets = [{
+		this.rcpPresets = [{
 			category: 'Macros',
-			label: 'Create SCP Macro',
+			label: 'Create rcp Macro',
 			bank: {
 				style: 			'png',
-				text: 			'Record SCP Macro',
+				text: 			'Record rcp Macro',
 				png64: 			this.ICON_REC_INACTIVE,
 				pngalignment:	'center:center',
 				latch: 			false,
@@ -459,7 +459,7 @@ this.log('info','***** END OF COMMAND LIST *****')
 			]
 		}];
 		
-		this.setPresetDefinitions(this.scpPresets);
+		this.setPresetDefinitions(this.rcpPresets);
 	}
 
 	
@@ -473,7 +473,7 @@ this.log('info','***** END OF COMMAND LIST *****')
 			let cY = parseInt(c.cmd.Y);
 			let cV
 
-			switch(c.scp.Type) {
+			switch(c.rcp.Type) {
 				case 'integer':
 				case 'binary':
 					cX++;
@@ -487,21 +487,21 @@ this.log('info','***** END OF COMMAND LIST *****')
 			}
 			
 			// Check for new value on existing action
-			let scpActions = this.macro.actions;
-			if (scpActions !== undefined) {
-				foundActionIdx = scpActions.findIndex(cmd => (
-					cmd.action == c.scp.Address.replace(/:/g, "_") && 
+			let rcpActions = this.macro.actions;
+			if (rcpActions !== undefined) {
+				foundActionIdx = rcpActions.findIndex(cmd => (
+					cmd.action == c.rcp.Address.replace(/:/g, "_") && 
 					cmd.options.X == cX &&
 					cmd.options.Y == cY
 				));
 			}
 			
 			if (foundActionIdx == -1) {
-				scpActions.push([]);
-				foundActionIdx = scpActions.length - 1;
+				rcpActions.push([]);
+				foundActionIdx = rcpActions.length - 1;
 			}
 
-			scpActions[foundActionIdx] = {action: c.scp.Address.replace(/:/g, "_"), options: {X: cX, Y: cY, Val: cV}};
+			rcpActions[foundActionIdx] = {action: c.rcp.Address.replace(/:/g, "_"), options: {X: cX, Y: cY, Val: cV}};
 
 		}
 	}
@@ -530,9 +530,9 @@ this.log('info','***** END OF COMMAND LIST *****')
 				}
 			)
 
-			let scpCommand = this.scpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == preset.actions[i].action);
+			let rcpCommand = this.rcpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == preset.actions[i].action);
 
-			if (scpCommand != undefined && scpCommand.Type == 'integer' && scpCommand.Max == 1) {
+			if (rcpCommand != undefined && rcpCommand.Type == 'integer' && rcpCommand.Max == 1) {
 				preset.actions[i].options.Val = 'Toggle';				
 			}
 
@@ -620,15 +620,15 @@ this.log('info','***** END OF COMMAND LIST *****')
 	feedback(feedback, bank) {
 
 		let options     = feedback.options;
-		let scpCommand  = this.scpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == feedback.type);
+		let rcpCommand  = this.rcpCommands.find(cmd => cmd.Address.replace(/:/g, "_") == feedback.type);
 		let retOptions  = {};
 
-		if (scpCommand !== undefined) {
+		if (rcpCommand !== undefined) {
 			let optVal = (options.Val == undefined) ? options.X : options.Val;
 			let optX = (options.X > 0) ? options.X : this.config[`myCh${-options.X}`];
 			let optY = (options.Y == undefined) ? 1 : options.Y;
 						
-//console.log(`\nFeedback: '${feedback.id}' from bank '${bank.text}' is ${feedback.type} (${scpCommand.Address})`);
+//console.log(`\nFeedback: '${feedback.id}' from bank '${bank.text}' is ${feedback.type} (${rcpCommand.Address})`);
 //console.log(`X: ${optX}, Y: ${optY}, Val: ${optVal}`);
 
 			if (this.dataStore[feedback.type] !== undefined && this.dataStore[feedback.type][optX] !== undefined) {
@@ -640,7 +640,7 @@ this.log('info','***** END OF COMMAND LIST *****')
 				} else {
 
 					if (this.colorCommands.includes(feedback.type)) {
-						let c = scpNames.chColorRGB[this.dataStore[feedback.type][optX][optY]]
+						let c = rcpNames.chColorRGB[this.dataStore[feedback.type][optX][optY]]
 						retOptions.color   = c.color;
 						retOptions.bgcolor = c.bgcolor;
 //console.log(`  *** Match *** (Color) ${JSON.stringify(retOptions)}\n`);
@@ -672,7 +672,7 @@ this.log('info','***** END OF COMMAND LIST *****')
 
 	// Poll the console for it's status to update buttons via feedback
 
-	pollScp() {
+	pollrcp() {
 		let allFeedbacks = this.getAllFeedbacks();
 		for (let fb in allFeedbacks) {
 			let cmd = this.parseCmd('get', allFeedbacks[fb].type, allFeedbacks[fb].options);
@@ -685,8 +685,8 @@ this.log('info','***** END OF COMMAND LIST *****')
 
 
 	addToDataStore(cmd) {
-		let idx = cmd.scp.Index;
-		let dsAddr = cmd.scp.Address.replace(/:/g, "_");
+		let idx = cmd.rcp.Index;
+		let dsAddr = cmd.rcp.Address.replace(/:/g, "_");
 		let iY;
 		
 		if (cmd.cmd.Val == undefined) {
