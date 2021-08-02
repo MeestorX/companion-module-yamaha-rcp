@@ -130,7 +130,7 @@ module.exports = {
         return changed;
     }),
 
-    // Upgrade  1.1.3 > 1.6.0, changes action names to actual SCP names
+    // Upgrade  1.1.3 > 1.6.0, changes action names to actual RCP names
     upg113to160: ((context, config, actions, feedbacks) => {
         var paramFuncs		= require('./paramFuncs');
  

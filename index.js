@@ -366,9 +366,9 @@ class instance extends instance_skel {
 		]};
 
 
-this.log('info','******** COMMAND LIST *********');
-Object.entries(commands).forEach(([key, value]) => this.log('info',`${value.label.padEnd(36, '\u00A0')} ${key}`));
-this.log('info','***** END OF COMMAND LIST *****')
+// this.log('info','******** COMMAND LIST *********');
+// Object.entries(commands).forEach(([key, value]) => this.log('info',`${value.label.padEnd(36, '\u00A0')} ${key}`));
+// this.log('info','***** END OF COMMAND LIST *****')
 
 
 		this.setActions(commands);
