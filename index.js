@@ -116,8 +116,10 @@ class instance extends instance_skel {
 	updateConfig(config) {
 
 		this.config = config;
-		this.rcpCommands = paramFuncs.getParams(config);
-		this.newConsole();
+		if (this.config.model) {
+			this.rcpCommands = paramFuncs.getParams(config);
+			this.newConsole();
+		}
 
 	}
 
